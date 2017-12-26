@@ -1,6 +1,8 @@
 <?php 
 	$conn = mysqli_connect('localhost', 'root', '', 'dislike_like');
 
+	$user_id = 1;
+
 
 	if (!$conn) {
 		die("Error connecting to database: " . mysqli_connect_error($conn));
@@ -9,22 +11,27 @@
 
 	// if user clicks like or dislike button
 	if (isset($_POST['action'])) {
-		$user_id = $_POST['user_id'];
 		$post_id = $_POST['post_id'];
 		$action = $_POST['action'];
 
 		switch ($action) {
 			case 'like':
 				$sql = "INSERT INTO rating_info (user_id, post_id, rating_action) 
-						VALUES (".$user_id .", " . $post_id . ",  'like')";
+				 		VALUES ($user_id, $post_id, 'like') 
+				 		ON DUPLICATE KEY UPDATE rating_action='like'";
 				break;
 			case 'dislike':
-				$sql = "INSERT INTO rating_info (user_id, post_id, rating_action) 
-						VALUES (".$user_id .", " . $post_id . ",  'like')";
+				$sql  = "INSERT INTO rating_info (user_id, post_id, rating_action) 
+				 		VALUES ($user_id, $post_id, 'dislike') 
+				 		ON DUPLICATE KEY UPDATE rating_action='dislike'";
 				break;
-			
+			case 'unlike':
+				$sql = "DELETE FROM rating_info WHERE user_id=$user_id AND post_id=$post_id";
+				break;
+			case 'undislike':
+				$sql = "DELETE FROM rating_info WHERE user_id=$user_id AND post_id=$post_id";
+				break;
 			default:
-				
 				break;
 		}
 
@@ -47,14 +54,70 @@
 	{
 		global $conn;
 
-		$sql = "SELECT COUNT(post_id) 
+		$sql = "SELECT COUNT(*) 
 					FROM rating_info 
-					WHERE post_id=" . $id . 
-					"AND rating_action=1";
+					WHERE post_id = $id 
+					 AND rating_action='like'";
+
+		$rs = mysqli_query($conn, $sql);
+		$result = mysqli_fetch_array($rs);
+		return $result[0];
+	}
+
+
+	function getDislikes($id)
+	{
+		global $conn;
+
+		$sql = "SELECT COUNT(*) 
+					FROM rating_info 
+					WHERE post_id = $id 
+					 AND rating_action='dislike'";
+
+		$rs = mysqli_query($conn, $sql);
+		$result = mysqli_fetch_array($rs);
+		return $result[0];
+	}
+
+
+
+	function userLiked($post_id)
+	{
+		global $conn;
+		global $user_id;
+
+			$sql = "SELECT * FROM rating_info 
+					WHERE user_id=$user_id AND post_id=$post_id AND rating_action='like'";
 
 		$result = mysqli_query($conn, $sql);
-		return mysqli_fetch_array($result)[0];
+
+
+		if (mysqli_num_rows($result) > 0) {
+			return true;
+		}else{
+			return false;
+		}
 	}
+
+	function userDisliked($post_id)
+	{
+		global $conn;
+		global $user_id;
+
+			$sql = "SELECT * FROM rating_info 
+					WHERE user_id=$user_id AND post_id=$post_id AND rating_action='dislike'";
+
+		$result = mysqli_query($conn, $sql);
+
+
+		if (mysqli_num_rows($result) > 0) {
+			return true;
+		}else{
+			return false;
+		}
+	}
+
+
 
 ?>
 <!DOCTYPE html>
@@ -93,32 +156,32 @@
 </head>
 <body>
 	<div class="posts-wrapper" style="border: 1px solid red;">
-		<div class="logged_in_user">
-			<label>Logged in User ID:</label>
-			<select onChange="return setLoggedInUser()" id="logged_in_user_id">
-				<option selected disabled>Select logged in user</option>
-				<option value="1">1</option>
-				<option value="2">2</option>
-				<option value="3">3</option>
-			</select>
-		</div>
 
 		<?php foreach ($posts as $post): ?>
 			<div class="post">
 				<?php echo $post['text']; ?>
 
 				<div class="post-info">
-					
 					<i 
-					  class="fa fa-thumbs-o-up like-btn" 
+					  <?php if (userLiked($post['id'])): ?>
+						  class="fa fa-thumbs-up like-btn"
+					  <?php else: ?>
+						  class="fa fa-thumbs-o-up like-btn"
+					  <?php endif ?>
 					  data-id="<?php echo $post['id'] ?>"></i>
 
-					<span><?php echo $post['id']; ?></span>
+					<span class="likes"><?php echo getLikes($post['id']); ?></span>
 
 					&nbsp;&nbsp;&nbsp;&nbsp;
-					<i class="fa fa-thumbs-o-down dislike-btn" data-id="<?php echo $post['id'] ?>"></i>
-					<!-- <i class="fa fa-thumbs-o-down dislike-btn"></i> -->
-					<span>2</span>
+					<i 
+					  <?php if (userDisliked($post['id'])): ?>
+						  class="fa fa-thumbs-down dislike-btn"
+					  <?php else: ?>
+						  class="fa fa-thumbs-o-down dislike-btn"
+					  <?php endif ?>
+					  data-id="<?php echo $post['id'] ?>"></i>
+
+					<span class="dislikes"><?php echo getDislikes($post['id']); ?></span>
 				</div>
 			</div>
 		<?php endforeach ?>
@@ -127,53 +190,67 @@
 </body>
 </html>
 <script>
-	var user_id = null;
-
-	function setLoggedInUser() {
-		user_id = $('#logged_in_user_id').val();
-	}
 
 	$(document).ready(function(){
-
 		// if the user clicks on the like button ...
 		$('.like-btn').on('click', function(){
 			var post_id = $(this).data('id');
-			$action = $(this);
-			console.log($action);
-			
+			$clicked_btn = $(this);
+
+			if ($clicked_btn.hasClass('fa-thumbs-o-up')) {
+				action = 'like';
+			} else if($clicked_btn.hasClass('fa-thumbs-up')){
+				action = 'unlike';
+			}
+
 			$.ajax({
 				url: 'index.php',
 				type: 'post',
 				data: {
-					'action': 'like',
-					'post_id': post_id,
-					'user_id': user_id
+					'action': action,
+					'post_id': post_id
 				},
 				success: function(res){
-					$action.removeClass('fa-thumbs-o-up');
-					$action.addClass('fa-thumbs-up');
+					if (action == "like") {
+						$clicked_btn.removeClass('fa-thumbs-o-up');
+						$clicked_btn.addClass('fa-thumbs-up');
+					} else if(action == "unlike") {
+						$clicked_btn.removeClass('fa-thumbs-up');
+						$clicked_btn.addClass('fa-thumbs-o-up');
+					}
+
 					console.log(res);
 				}
-			})			
+			});		
 
 		});
-
 
 		// if the user clicks on the dislike button ...
 		$('.dislike-btn').on('click', function(){
 			var post_id = $(this).data('id');
-			var action = $(this);
+			$clicked_btn = $(this);
+
+			if ($clicked_btn.hasClass('fa-thumbs-o-down')) {
+				action = 'dislike';
+			} else if($clicked_btn.hasClass('fa-thumbs-down')){
+				action = 'undislike';
+			}
 			
 			$.ajax({
 				url: 'index.php',
 				type: 'post',
 				data: {
-					'action': 'dislike',
-					'post_id': post_id,
-					'user_id': user_id
+					'action': action,
+					'post_id': post_id
 				},
 				success: function(res){
-					alert(res);
+					if (action == "dislike") {
+						$clicked_btn.removeClass('fa-thumbs-o-down');
+						$clicked_btn.addClass('fa-thumbs-down');
+					} else if(action == "undislike") {
+						$clicked_btn.removeClass('fa-thumbs-down');
+						$clicked_btn.addClass('fa-thumbs-o-down');
+					}
 				}
 			});	
 
